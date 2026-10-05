@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>السلم والتعبان - أحمد خالد</title>
+<style>
+  body {
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    background: radial-gradient(circle at top, #f7d9a0, #c98b3c 70%);
+    margin: 0; padding: 20px; color: #3a2200;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { margin: 5px 0; color: #7a1f1f; text-shadow: 1px 1px 0 #ffd98a; }
+  .subtitle { margin: 0 0 15px; font-size: 15px; color: #5a3600; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(10, 1fr);
+    width: min(92vw, 560px); height: min(92vw, 560px);
+    border: 6px solid #7a1f1f; border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.4); overflow: hidden;
+    background: #fff3d6;
+  }
+  .cell {
+    position: relative; display: flex; align-items: flex-start; justify-content: flex-start;
+    font-size: 11px; padding: 3px; box-sizing: border-box;
+    border: 1px solid rgba(122,31,31,.35); color: #6b4400;
+  }
+  .cell:nth-child(even) { background: #ffe9b8; }
+  .cell:nth-child(odd)  { background: #fff3d6; }
+  .cell.ladder { background: #c7f0c1 !important; }
+  .cell.snake  { background: #ffc4c4 !important; }
+  .num { position: absolute; top: 2px; right: 4px; font-weight: bold; opacity: .8; }
+  .tokens { position: absolute; bottom: 3px; left: 3px; display: flex; gap: 2px; font-size: 15px; }
+  .panel {
+    margin-top: 18px; background: #fff3d6; border: 4px solid #7a1f1f;
+    border-radius: 14px; padding: 16px 22px; text-align: center;
+    box-shadow: 0 6px 18px rgba(0,0,0,.3); width: min(92vw, 520px);
+  }
+  button {
+    font-family: inherit; font-size: 18px; font-weight: bold; cursor: pointer;
+    background: linear-gradient(#e0a63b, #b8791b); color: #fff;
+    border: 2px solid #7a1f1f; border-radius: 10px; padding: 10px 22px;
+    margin: 6px; transition: transform .1s;
+  }
+  button:active { transform: scale(.95); }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .msg { min-height: 44px; font-size: 16px; margin: 10px 0; font-weight: bold; color: #5a3600; }
+  .score { display: flex; justify-content: space-around; font-size: 15px; margin-top: 8px; }
+  .score span { font-weight: bold; color: #7a1f1f; }
+  .die { font-size: 34px; }
+</style>
+</head>
+<body>
+  <h1>🪜 السلم والتعبان 🐍</h1>
+  <p class="subtitle">اللاعب: أحمد خالد 🇪🇬 — من 1 لحد 100</p>
+
+  <div class="board" id="board"></div>
+
+  <div class="panel">
+    <div class="die" id="die">🎲</div>
+    <div class="msg" id="msg">اضغط "ارمي الزهر" عشان نبتدي اللعب!</div>
+    <button id="rollBtn">ارمي الزهر</button>
+    <button id="resetBtn">من الأول</button>
+    <div class="score">
+      <div>أحمد خالد: <span id="p1">1</span></div>
+      <div>الحاسوب: <span id="p2">1</span></div>
+    </div>
+  </div>
+
+<script>
+const LADDERS = { 4:25, 13:46, 33:49, 42:63, 50:69, 62:81, 74:92 };
+const SNAKES  = { 27:5, 40:3, 54:31, 66:45, 76:58, 89:53, 99:41 };
+const totalCells = 100;
+
+const board = document.getElementById('board');
+const msgEl = document.getElementById('msg');
+const dieEl = document.getElementById('die');
+const p1El  = document.getElementById('p1');
+const p2El  = document.getElementById('p2');
+
+let pos = { 1: 1, 2: 1 };
+let turn = 1;          // 1 = أحمد خالد ، 2 = الحاسوب
+let rolling = false;
+
+// بناء اللوحة من 100 لـ 1 (الصفوف من تحت لفوق)
+function buildBoard() {
+  board.innerHTML = '';
+  for (let row = 9; row >= 0; row--) {
+    const start = row * 10;
+    let cols = [];
+    for (let i = 1; i <= 10; i++) cols.push(start + i);
+    if (row % 2 === 1) cols.reverse(); // snake pattern
+    cols.forEach(n => {
+      const c = document.createElement('div');
+      c.className = 'cell';
+      c.id = 'cell-' + n;
+      if (LADDERS[n]) c.classList.add('ladder');
+      if (SNAKES[n])  c.classList.add('snake');
+      c.innerHTML = `<span class="num">${n}</span><span class="tokens" id="tok-${n}"></span>`;
+      board.appendChild(c);
+    });
+  }
+  render();
+}
+
+function render() {
+  document.querySelectorAll('.tokens').forEach(t => t.innerHTML = '');
+  const t1 = document.createElement('div'); t1.textContent = '🧑';
+  const t2 = document.createElement('div'); t2.textContent = '🤖';
+  const c1 = document.getElementById('tok-' + pos[1]);
+  const c2 = document.getElementById('tok-' + pos[2]);
+  if (c1) c1.appendChild(t1);
+  if (c2) c2.appendChild(t2);
+  p1El.textContent = pos[1];
+  p2El.textContent = pos[2];
+}
+
+function move(player, steps) {
+  let target = pos[player] + steps;
+  if (target > 100) {
+    msgFor(player, `رميت ${steps} بس محتاج رقم مظبوط توصل لـ 100 بالظبط 😅`);
+    return false;
+  }
+  pos[player] = target;
+
+  if (LADDERS[target]) {
+    msgFor(player, `رميت ${steps} وطلعت على سلم! 🪜 من ${target} لـ ${LADDERS[target]} — طلوع يا معلم!`);
+    pos[player] = LADDERS[target];
+  } else if (SNAKES[target]) {
+    msgFor(player, `رميت ${steps} ووقعت على تعبان! 🐍 من ${target} نزلت لـ ${SNAKES[target]} — يا خبر!`);
+    pos[player] = SNAKES[target];
+  } else {
+    msgFor(player, `رميت ${steps} ووصلت خانة ${target}`);
+  }
+
+  render();
+
+  if (pos[player] === 100) {
+    msgEl.textContent = player === 1
+      ? '🎉 مبروك يا أحمد خالد! كسبت اللعبة يا بطل 🇪🇬'
+      : '😢 الحاسوب كسب المرة دي.. جرب تاني يا أحمد!';
+    document.getElementById('rollBtn').disabled = true;
+    return true;
+  }
+  return false;
+}
+
+function msgFor(player, text) {
+  msgEl.textContent = (player === 1 ? '🧑 أحمد خالد: ' : '🤖 الحاسوب: ') + text;
+}
+
+function rollDie() {
+  return Math.floor(Math.random() * 6) + 1;
+}
+
+document.getElementById('rollBtn').addEventListener('click', () => {
+  if (rolling) return;
+  rolling = true;
+  const btn = document.getElementById('rollBtn');
+  btn.disabled = true;
+
+  const val = rollDie();
+  dieEl.textContent = '🎲';
+  let count = 0;
+  const spin = setInterval(() => {
+    dieEl.textContent = '🎲 ' + (Math.floor(Math.random()*6)+1);
+    if (++count > 8) {
+      clearInterval(spin);
+      dieEl.textContent = '🎲 ' + val;
+      const won = move(1, val);
+      if (won) { rolling = false; return; }
+      turn = 2;
+      setTimeout(computerTurn, 900);
+    }
+  }, 70);
+});
+
+function computerTurn() {
+  const val = rollDie();
+  dieEl.textContent = '🎲 ' + val;
+  const won = move(2, val);
+  if (won) { rolling = false; return; }
+  turn = 1;
+  rolling = false;
+  document.getElementById('rollBtn').disabled = false;
+}
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  pos = { 1: 1, 2: 1 };
+  turn = 1; rolling = false;
+  dieEl.textContent = '🎲';
+  document.getElementById('rollBtn').disabled = false;
+  msgEl.textContent = 'يلا نلعب من جديد يا أحمد خالد! 🇪🇬';
+  render();
+});
+
+buildBoard();
+</script>
+</body>
+</html>
